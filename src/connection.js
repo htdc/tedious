@@ -249,6 +249,7 @@ class Connection extends EventEmitter {
     this.socketError = this.socketError.bind(this);
     this.requestTimeout = this.requestTimeout.bind(this);
     this.connectTimeout = this.connectTimeout.bind(this);
+    this.cancelTimeout = this.cancelTimeout.bind(this);
     this.createDebug();
     this.createTokenStreamParser();
     this.inTransaction = false;
@@ -280,6 +281,7 @@ class Connection extends EventEmitter {
     if (!this.closed) {
       this.clearConnectTimer();
       this.clearRequestTimer();
+      this.clearCancelTimer();
       this.closeConnection();
       if (!this.redirect) {
         this.emit('end');
@@ -287,8 +289,19 @@ class Connection extends EventEmitter {
         this.emit('rerouting');
       }
       if (this.request) {
-        const err = RequestError('Connection closed before request completed.', 'ECLOSE');
-        this.request.callback(err);
+        if (this.request.timedOut && this.request.cancelTimedOut) {
+          const total = this.config.options.requestTimeout + this.config.options.cancelTimeout;
+          const err = RequestError('Timeout: Request and Cancelation failed to complete in ' + total + 'ms', 'ECLOSE');
+          this.request.callback(err);
+        }
+        else if (this.request.cancelTimedOut) {
+          const err = RequestError('Timeout: Cancelation failed to complete in ' + this.config.options.cancelTimeout + 'ms', 'ECLOSE');
+          this.request.callback(err);
+        }
+        else {
+          const err = RequestError('Connection closed before request completed.', 'ECLOSE');
+          this.request.callback(err);
+        }
         this.request = undefined;
       }
       this.closed = true;
@@ -575,6 +588,13 @@ class Connection extends EventEmitter {
     }
   }
 
+  createCancelTimer() {
+    this.clearCancelTimer();                              // release old timer, just to be safe
+    if (this.config.options.cancelTimeout) {
+      return this.cancelTimer = setTimeout(this.cancelTimeout, this.config.options.cancelTimeout);
+    }
+  }
+
   connectTimeout() {
     const message = 'Failed to connect to ' + this.config.server + ':' + this.config.options.port + ' in ' + this.config.options.connectTimeout + 'ms';
     this.debug.log(message);
@@ -584,9 +604,15 @@ class Connection extends EventEmitter {
   }
 
   requestTimeout() {
+    this.request.timedOut = true;
     this.requestTimer = undefined;
-    this.messageIo.sendMessage(TYPE.ATTENTION);
-    return this.transitionTo(this.STATE.SENT_ATTENTION);
+    this.cancel();
+  }
+
+  cancelTimeout() {
+    this.request.cancelTimedOut = true;
+    this.cancelTimer = undefined;
+    this.close();
   }
 
   clearConnectTimer() {
@@ -599,6 +625,13 @@ class Connection extends EventEmitter {
     if (this.requestTimer) {
       clearTimeout(this.requestTimer);
       this.requestTimer = undefined;
+    }
+  }
+
+  clearCancelTimer() {
+    if (this.cancelTimer) {
+      clearTimeout(this.cancelTimer);
+      this.cancelTimer = undefined;
     }
   }
 
@@ -1033,6 +1066,7 @@ class Connection extends EventEmitter {
       return false;
     } else {
       this.request.canceled = true;
+      this.createCancelTimer();
       this.messageIo.sendMessage(TYPE.ATTENTION);
       this.transitionTo(this.STATE.SENT_ATTENTION);
       return true;
@@ -1317,7 +1351,8 @@ Connection.prototype.STATE = {
           const sqlRequest = this.request;
           this.request = undefined;
           this.transitionTo(this.STATE.LOGGED_IN);
-          if (sqlRequest.canceled) {
+          this.clearCancelTimer();
+          if (sqlRequest.canceled && !sqlRequest.timedOut) {
             return sqlRequest.callback(RequestError('Canceled.', 'ECANCEL'));
           } else {
             const message = 'Timeout: Request failed to complete in ' + this.config.options.requestTimeout + 'ms';
