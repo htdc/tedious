@@ -45,7 +45,8 @@
     "bl": "^1.2.0",
     "iconv-lite": "^0.4.11",
     "readable-stream": "^2.2.6",
-    "sprintf": "0.1.5"
+    "sprintf": "0.1.5",
+    "coffee-script": "^1.9.3",
   },
   "devDependencies": {
     "async": "^1.4.0",
@@ -71,6 +72,7 @@
     "pretest-integration": "eslint src test",
     "test-integration": "nodeunit --reporter minimal test/setup.js test/integration/",
     "prepublish": "coffee scripts/build.coffee",
+    "postinstall": "coffee scripts/build.coffee",
     "semantic-release": "semantic-release pre && npm publish && semantic-release post"
   },
   "babel": {

@@ -2,6 +2,20 @@ fs    = require 'fs'
 path  = require 'path'
 child = require 'child_process'
 
+fsExistsSync = fs.existsSync || path.existsSync
+
+getBinaryPath = (binary) ->
+  binary_path = path.join('node_modules', '.bin', binary)
+  if fsExistsSync binary_path
+    return binary_path
+
+  binary_path = path.join('..', '.bin', binary)
+  if fsExistsSync binary_path
+    return binary_path
+
+  return binary
+
+
 rmdir = (dir) ->
   list = fs.readdirSync dir
   for entry in list
@@ -30,8 +44,8 @@ isdir = (dir) ->
 if isdir 'src'
   rmdir 'lib' if isdir 'lib'
 
-  coffee_bin = path.join 'node_modules', '.bin', 'coffee'
-  babel_bin = path.join 'node_modules', '.bin', 'babel'
+  coffee_bin = getBinaryPath 'coffee'
+  babel_bin = getBinaryPath 'babel'
 
   child.exec "#{coffee_bin} -b -c -o lib/ src/", (err) ->
     if err
