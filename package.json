@@ -46,7 +46,7 @@
     "iconv-lite": "^0.4.11",
     "readable-stream": "^2.2.6",
     "sprintf": "0.1.5",
-    "coffee-script": "^1.9.3",
+    "coffee-script": "^1.9.3"
   },
   "devDependencies": {
     "async": "^1.4.0",
